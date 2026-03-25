@@ -118,7 +118,8 @@ function get_parent(tree, node)
     return only(parents)
 end
 
-get_parent(node::AtomNode) = node.parent
+get_parent(molecule::InternalCoordinateMolecule, node::AtomNode) = node.parent
+get_parent(molecule::InternalCoordinateMolecule, node::Int) = molecule.nodes[node].parent
 get_parent(::Nothing) = nothing
 
 struct InternalCoordinateMolecule <: AbstractMolecule
@@ -128,12 +129,12 @@ struct InternalCoordinateMolecule <: AbstractMolecule
     nodes::Vector{AtomNode}
 end
 
-function InternalCoordinateMolecule(mol::CartesianMolecule, root = 1)
-    system = mol.system
-    topology = mol.topology
-    positions = mol.positions
+function InternalCoordinateMolecule(molecule::CartesianMolecule, root = 1)
+    system = molecule.system
+    topology = molecule.topology
+    positions = molecule.positions
     nodes = Vector{AtomNode}(undef, length(system))
-    root = mol.system[root]
+    root = molecule.system[root]
 
     tree = bfs_tree(topology, root.index)
     to_process = [root.index]
@@ -172,20 +173,27 @@ function InternalCoordinateMolecule(mol::CartesianMolecule, root = 1)
     return InternalCoordinateMolecule(system, topology, root.index, nodes)
 end
 
-function CartesianMolecule(mol::InternalCoordinateMolecule)
-    positions = zeros(3, length(mol.system))
+function CartesianMolecule(molecule::InternalCoordinateMolecule)
+    positions = zeros(3, length(molecule.system))
 
-    node = nodes[mol.root]
+    to_process = [molecule.root]
 
-    while !isnothing(current)
-        current = node.index
+    while !isempty(to_process)
+        current = popfirst!(to_process)
+        node = molecule.nodes[current]
         children = node.children
-        parent = get_parent(node)
-        grandparent = get_parent(parent)
+        parent = get_parent(molecule, node)
+        grandparent = get_parent(molecule, parent)
+
+        @show molecule.system[current]
+        @show children
+
+        append!(to_process, children)
 
         for (child, d, α, φ) in zip(children, node.distances, node.angles, node.dihedrals)
+            @show child
             if isnothing(parent)
-                position[:, child] = [d, 0, 0]
+                positions[:, child] = [d, 0, 0]
                 continue
             end
             
@@ -193,20 +201,22 @@ function CartesianMolecule(mol::InternalCoordinateMolecule)
             rel = d * normalize(rel_parent)
 
             if isnothing(grandparent)
-                if izero(norm(positions[:, parent]))
+                if iszero(norm(positions[:, parent]))
                     axis = normalize(rel × [0, -1, 0])
+                else
+                    axis = normalize(positions[:, parent] × positions[:, current])
                 end
 
-                axis = normalize(positions[:, parent] × positions[:, current])
-
-                positions[:, child] = positions[:, current] + RotationVec(α * axis) * rel
+                positions[:, child] = positions[:, current] + RotationVec((α * axis)...) * rel
                 continue
             end
 
             rel_grandparent = positions[:, grandparent] - positions[:, parent]
             axis = -normalize(rel_parent × rel_grandparent)
 
-            positions[:, :child] = RotationVec(φ * normalize(rel_parent)) * RotationVec(α * axis) * rel
+            positions[:, child] = RotationVec((φ * normalize(rel_parent))...) * RotationVec((α * axis)...) * rel
         end
     end
+
+    return CartesianMolecule(molecule.system, molecule.topology, positions)
 end

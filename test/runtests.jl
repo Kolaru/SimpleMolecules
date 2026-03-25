@@ -1,3 +1,4 @@
+using AtomicSystems
 using Graphs
 using SimpleMolecules
 using Test
@@ -29,10 +30,15 @@ end
     @test inc.nodes[2].angles[1] == π/2
 end
 
-# TODO Finish writing this test and check that InternalCoordinateMolecule is self
-# consistant
+# TODO Fix the fact that the two Hydrogens are at the wrong position
 @testset "Full molecule" begin
-    molecule = read("../example/formic_acid.xyz")
+    molecule = read("../example/formic_acid.xyz", CartesianMolecule)
 
-    
+    imolecule = InternalCoordinateMolecule(molecule)
+    molecule2 = CartesianMolecule(imolecule)
+
+    imolecule2 = InternalCoordinateMolecule(molecule)
+    molecule3 = CartesianMolecule(imolecule)
+
+    @test molecule2.positions == molecule3.positions
 end
