@@ -2,6 +2,7 @@ module SimpleMolecules
 
 using AngleBetweenVectors
 using AtomicSystems
+using Colors
 using Graphs
 using LinearAlgebra
 using PeriodicTable

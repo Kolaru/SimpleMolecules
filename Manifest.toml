@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "a18bffd2cdef732793eb5e2a5a5c5ce4bc1bc41f"
+project_hash = "1f4ba3c33495f1be5d5e6a1b1d61429ce311540f"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -300,7 +300,7 @@ uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 version = "1.11.0"
 
 [[deps.SimpleMolecules]]
-deps = ["AngleBetweenVectors", "AtomicSystems", "Graphs", "LinearAlgebra", "Mendeleev", "PeriodicTable", "Rotations", "Unitful", "UnitfulAtomic"]
+deps = ["AngleBetweenVectors", "AtomicSystems", "Graphs", "LinearAlgebra", "Mendeleev", "PeriodicTable", "Rotations", "UnicodePlots", "Unitful", "UnitfulAtomic"]
 path = "."
 uuid = "7d943647-7f8d-435c-a8e5-bbcd0ae30d06"
 version = "0.1.0"

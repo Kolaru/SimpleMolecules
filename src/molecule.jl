@@ -10,7 +10,7 @@ while all output values are Untiful quantities.
 """
 abstract type AbstractMolecule end
 
-length(molecule::AbstractMolecule) = nv(molecule.topology)
+Base.length(molecule::AbstractMolecule) = nv(molecule.topology)
 nbonds(molecule::AbstractMolecule) = ne(molecule.topology)
 
 function get_bonds(molecule::AbstractMolecule)
@@ -57,15 +57,30 @@ function Base.show(io::IO, molecule::CartesianMolecule)
 
     xx = molecule.positions[1, :]
     yy = molecule.positions[2, :]
+
+    colors = map(molecule.system) do A
+        c = parse(Colorant, A.element.cpk_hex)
+        return (Int(red(c) * 255), Int(green(c) * 255), Int(blue(c) * 255))
+    end
+
     plt = scatterplot(xx, yy ;
         marker = [first(string(A.element.symbol)) for A in molecule.system],
         compact = true,
         grid = false,
-        color = :white
+        color = colors,
+        border = :none,
+        xticks = false,
+        yticks = false
     )
     for (A, B) in get_bonds(molecule)
-        lineplot!(plt, [xx[A], xx[B]], [yy[A], yy[B]] ;
-            color = :blue
+        midx = 0.5 * (xx[A] + xx[B])
+        midy = 0.5 * (yy[A] + yy[B])
+        lineplot!(plt, [xx[A], midx], [yy[A], midy] ;
+            color = colors[A]
+        )
+
+        lineplot!(plt, [midx, xx[B]], [midy, yy[B]] ;
+            color = colors[B]
         )
     end
     display(plt)
