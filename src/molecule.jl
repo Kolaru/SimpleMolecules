@@ -1,4 +1,43 @@
-Graphs.add_edge!(g::SimpleGraph, A::Atom, B::Atom) = add_edge!(g, A.index, B.index)
+
+"""
+    AtomNode
+
+Represent an atom in a InternalCoordinateMolecule,
+as a node which contains all relevant internal coordinates for its children.
+
+Fields
+======
+- atom: Atom represented by this node
+- parent: The parent AtomNode, or nothing if the current AtomNode is root.
+- children: The children of the AtomNode
+- distances: Distance to its children
+- angles: Angles (parent, self, children)
+- dihedrals: Dihedral angles (grand_parent, parent, self, children)
+"""
+struct AtomNode
+    atom::Atom
+    parent::Union{Nothing, Int}
+    children::Vector{AtomNode}
+    distances::Vector{Float64}
+    angles::Vector{Float64}
+    dihedrals::Vector{Float64}
+end
+
+AbstractTrees.children(node::AtomNode) = node.children
+index(node::AtomNode) = node.atom.index
+
+function Base.show(io::IO, node::AtomNode)
+    A = node.atom
+    if isempty(node.children)
+        print(io, "AtomNode[$(index(node))]($(A.name) ($(A.element.name)))")
+    else
+        print(io, "AtomNode[$(index(node))]($(A.name) ($(A.element.name))," *
+            " distances = $(round.(node.distances, digits = 2))," *
+            " angles = $(round.(rad2deg.(node.angles), digits = 2))," *
+            " dihedrals = $(round.(rad2deg.(node.dihedrals), digits = 2)))"
+        )
+    end
+end
 
 """
     AbstractMolecule
@@ -18,7 +57,6 @@ function get_bonds(molecule::AbstractMolecule)
         return molecule.system[edge.src] => molecule.system[edge.dst]
     end
 end
-
 struct CartesianMolecule <: AbstractMolecule
     system::AtomicSystem
     topology::SimpleGraph
@@ -52,8 +90,14 @@ function CartesianMolecule(system::AtomicSystem, positions::AbstractMatrix{<:Qua
     return CartesianMolecule(system, topology, positions)
 end
 
+
 function Base.show(io::IO, molecule::CartesianMolecule)
-    print(io, "Simple molecules with $(length(molecule)) atoms and $(nbonds(molecule)) bonds.\n")
+    print(io, "Simple molecule (cartesian coordinates) with $(length(molecule)) atoms and $(nbonds(molecule)) bonds.\n")
+
+    for A in molecule.system
+        x, y, z = round.(molecule.positions[:, A] ; digits = 2)
+        println("  $(A.index). $(A.name)  ($(A.element.name))  [$x, $y, $z]")
+    end
 
     xx = molecule.positions[1, :]
     yy = molecule.positions[2, :]
@@ -67,10 +111,7 @@ function Base.show(io::IO, molecule::CartesianMolecule)
         marker = [first(string(A.element.symbol)) for A in molecule.system],
         compact = true,
         grid = false,
-        color = colors,
-        border = :none,
-        xticks = false,
-        yticks = false
+        color = colors
     )
     for (A, B) in get_bonds(molecule)
         midx = 0.5 * (xx[A] + xx[B])
@@ -86,30 +127,20 @@ function Base.show(io::IO, molecule::CartesianMolecule)
     display(plt)
 end
 
-"""
-    AtomNode
-
-Represent an atom in a InternalCoordinateMolecule,
-as a node which contains all relevant internal coordinates for its children.
-
-Fields
-======
-- parent: The parent AtomNode, or nothing if the current AtomNode is root.
-- children: The children of the AtomNode
-- distances: Distance to its children
-- angles: Angles (parent, self, children)
-- dihedrals: Dihedral angles (grand_parent, parent, self, children)
-"""
-struct AtomNode
-    index::Int
-    parent::Union{Nothing, Int}
-    children::Vector{Int}
-    distances::Vector{Float64}
-    angles::Vector{Float64}
-    dihedrals::Vector{Float64}
+struct InternalCoordinateMolecule <: AbstractMolecule
+    system::AtomicSystem
+    topology::SimpleGraph
+    root::Int
+    nodes::Vector{AtomNode}
 end
 
-AtomNode(atom::Atom) = AtomNode(atom.index, nothing, AtomNode[], Float64[], Float64[], Float64[])
+function Base.show(io::IO, molecule::InternalCoordinateMolecule)
+    print(io, "Simple molecule (internal coordinates) with $(length(molecule)) atoms and $(nbonds(molecule)) bonds.\n")
+
+    print_tree(io, molecule.nodes[molecule.root])
+end
+
+Graphs.add_edge!(g::SimpleGraph, A::Atom, B::Atom) = add_edge!(g, A.index, B.index)
 
 function get_parent(tree, node)
     isnothing(node) && return nothing
@@ -118,103 +149,197 @@ function get_parent(tree, node)
     return only(parents)
 end
 
-get_parent(molecule::InternalCoordinateMolecule, node::AtomNode) = node.parent
-get_parent(molecule::InternalCoordinateMolecule, node::Int) = molecule.nodes[node].parent
+function get_parent(molecule::InternalCoordinateMolecule, node::AtomNode)
+    parent = node.parent
+    isnothing(parent) && return nothing
+    return molecule.nodes[node.parent]
+end
+get_parent(molecule::InternalCoordinateMolecule, node::Int) = get_parent(molecule, molecule.nodes[node])
+get_parent(::InternalCoordinateMolecule, ::Nothing) = nothing
 get_parent(::Nothing) = nothing
 
-struct InternalCoordinateMolecule <: AbstractMolecule
-    system::AtomicSystem
-    topology::SimpleGraph
-    root::Int
-    nodes::Vector{AtomNode}
-end
-
-function InternalCoordinateMolecule(molecule::CartesianMolecule, root = 1)
-    system = molecule.system
-    topology = molecule.topology
+function build_node!(nodes, molecule::CartesianMolecule, tree::AbstractGraph, current::Int ; verbose = false)
     positions = molecule.positions
-    nodes = Vector{AtomNode}(undef, length(system))
-    root = molecule.system[root]
+    system = molecule.system
 
-    tree = bfs_tree(topology, root.index)
-    to_process = [root.index]
+    children = outneighbors(tree, current) 
+    parent = get_parent(tree, current)
+    grandparent = get_parent(tree, parent)
 
-    while !isempty(to_process)
-        current = popfirst!(to_process)
-        children = outneighbors(tree, current) 
-        parent = get_parent(tree, current)
-        grandparent = get_parent(tree, parent)
+    distances = [norm(positions[:, current] - positions[:, child]) for child in children]
 
-        append!(to_process, children)
+    angle_reference = parent
+    dihedral_reference = grandparent
 
-        distances = [norm(positions[:, current] - positions[:, child]) for child in children]
-
-        if isnothing(parent)
-            angles = fill(NaN, length(children))
-        else
-            angles = [angle(positions[:, child], positions[:, current], positions[:, parent]) for child in children]
+    if verbose
+        @info "Current: $(current). $(system[current])"
+        if !isnothing(angle_reference)
+            @info "Angle: $(angle_reference). $(system[angle_reference])"
         end
 
-        if isnothing(grandparent)
-            dihedrals = fill(NaN, length(children))
+        if !isnothing(dihedral_reference)
+            @info "Dihedral: $(dihedral_reference). $(system[dihedral_reference])"
+        end
+        @info "Children: $children"
+    end
+
+    if isnothing(angle_reference)
+        angles = fill(NaN, length(children))
+
+        for k in 2:length(children)
+            child = children[k]
+            angle_reference = children[k - 1]
+            
+            if verbose
+                @warn "No angle ref"
+                @info "Child: $child. $(system[child])"
+                @info "Angle: $angle_reference. $(system[angle_reference])"
+            end
+
+            angles[k] = angle(positions[:, child], positions[:, current], positions[:, angle_reference])
+        end
+    else
+        angles = [angle(positions[:, child], positions[:, current], positions[:, angle_reference]) for child in children]
+    end
+
+    if isnothing(dihedral_reference)
+        dihedrals = fill(NaN, length(children))
+
+        if isnothing(angle_reference)
+            for k in 3:length(children)
+                child = children[k]
+                angle_reference = children[k - 1]
+                dihedral_reference = children[k - 2]
+
+                if verbose
+                    @warn "No angle ref, no dihedral ref"
+                    @info "Child: $child. $(system[child])"
+                    @info "Angle: $angle_reference. $(system[angle_reference])"
+                    @info "Dihedral: $dihedral_reference. $(system[dihedral_reference])"
+                end
+
+                dihedrals[k] = dihedral(
+                    positions[:, dihedral_reference],
+                    positions[:, angle_reference],
+                    positions[:, current],
+                    positions[:, child]
+                )
+            end
         else
-            dihedrals = map(children) do child
-                dihedral(
-                    positions[:, grandparent],
-                    positions[:, parent],
+            for k in 2:length(children)
+                child = children[k]
+                dihedral_reference = children[k - 1]
+
+                if verbose
+                    @warn "No dihedral ref"
+                    @info "Child: $child. $(system[child])"
+                    @info "Dihedral: $dihedral_reference. $(system[dihedral_reference])"
+                end
+
+                dihedrals[k] = dihedral(
+                    positions[:, dihedral_reference],
+                    positions[:, angle_reference],
                     positions[:, current],
                     positions[:, child]
                 )
             end
         end
-
-        nodes[current] = AtomNode(current, parent, children, distances, angles, dihedrals) 
+    else
+        dihedrals = map(children) do child
+            dihedral(
+                positions[:, dihedral_reference],
+                positions[:, angle_reference],
+                positions[:, current],
+                positions[:, child]
+            )
+        end
     end
-    return InternalCoordinateMolecule(system, topology, root.index, nodes)
+
+    if verbose
+        println()
+    end
+
+    children_nodes = [build_node!(nodes, molecule, tree, C ; verbose) for C in children]
+    node = AtomNode(system[current], parent, children_nodes, distances, angles, dihedrals) 
+    nodes[current] = node
+    return node
+end
+
+# Conversion between molecule representations
+
+function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index = 1 ; verbose = false)
+    topology = molecule.topology
+    tree = bfs_tree(topology, root_index)
+    nodes = Vector{AtomNode}(undef, length(molecule))
+    build_node!(nodes, molecule, tree, root_index ; verbose)
+
+    return InternalCoordinateMolecule(molecule.system, topology, root_index, nodes)
 end
 
 function CartesianMolecule(molecule::InternalCoordinateMolecule)
     positions = zeros(3, length(molecule.system))
 
-    to_process = [molecule.root]
+    to_process = [molecule.nodes[molecule.root]]
 
     while !isempty(to_process)
-        current = popfirst!(to_process)
-        node = molecule.nodes[current]
+        node = popfirst!(to_process)
         children = node.children
         parent = get_parent(molecule, node)
         grandparent = get_parent(molecule, parent)
 
-        @show molecule.system[current]
-        @show children
-
         append!(to_process, children)
 
-        for (child, d, α, φ) in zip(children, node.distances, node.angles, node.dihedrals)
-            @show child
-            if isnothing(parent)
-                positions[:, child] = [d, 0, 0]
+        for (k, (child, d, α, φ)) in enumerate(zip(children, node.distances, node.angles, node.dihedrals))
+            use_sibling_as_parent = false
+
+            if !isnothing(parent)
+                angle_reference = parent
+            else
+                if k == 1
+                    angle_reference = nothing
+                else
+                    use_sibling_as_parent = true
+                    angle_reference = children[k - 1]
+                end
+            end
+
+            if !isnothing(grandparent)
+                dihedral_reference = grandparent
+            else
+                if k <= 1 + use_sibling_as_parent
+                    dihedral_reference = nothing
+                else
+                    if use_sibling_as_parent
+                        dihedral_reference = children[k - 2]
+                    else
+                        dihedral_reference = children[k - 1]
+                    end
+                end
+            end
+
+            if isnothing(angle_reference)
+                positions[:, index(child)] = [d, 0, 0]
                 continue
             end
-            
-            rel_parent = positions[:, parent] - positions[:, current]
-            rel = d * normalize(rel_parent)
 
-            if isnothing(grandparent)
-                if iszero(norm(positions[:, parent]))
+            rel_angle = positions[:, index(angle_reference)] - positions[:, index(node)]
+            rel = d * normalize(rel_angle)
+
+            if isnothing(dihedral_reference)
+                if iszero(norm(positions[:, index(angle_reference)]))
                     axis = normalize(rel × [0, -1, 0])
                 else
-                    axis = normalize(positions[:, parent] × positions[:, current])
+                    axis = normalize(positions[:, index(angle_reference)] × positions[:, index(node)])
                 end
 
-                positions[:, child] = positions[:, current] + RotationVec((α * axis)...) * rel
+                positions[:, index(child)] = positions[:, index(node)] + RotationVec((α * axis)...) * rel
                 continue
             end
 
-            rel_grandparent = positions[:, grandparent] - positions[:, parent]
-            axis = -normalize(rel_parent × rel_grandparent)
+            rel_dihedral = positions[:, index(dihedral_reference)] - positions[:, index(angle_reference)]
+            axis = normalize(rel_angle × rel_dihedral)
 
-            positions[:, child] = RotationVec((φ * normalize(rel_parent))...) * RotationVec((α * axis)...) * rel
+            positions[:, index(child)] = positions[:, index(node)] + RotationVec((φ * normalize(rel_angle))...) * RotationVec((α * axis)...) * rel
         end
     end
 
