@@ -26,6 +26,30 @@ end
 AbstractTrees.children(node::AtomNode) = node.children
 index(node::AtomNode) = node.atom.index
 
+function topologically_equal(node1::AtomNode, node2::AtomNode)
+    return (
+        node1.atom == node2.atom &&
+        node1.parent == node2.parent &&
+        node1.children == node2.children
+    )
+end
+
+function Base.:(==)(node1::AtomNode, node2::AtomNode)
+    return (
+        topologically_equal(node1, node2) &&
+        node1.distances == node2.distances &&
+        node1.dihedrals == node2.dihedrals
+    )
+end
+
+function Base.isapprox(node1::AtomNode, node2::AtomNode ; kwargs...)
+    return (
+        topologically_equal(node1, node2) &&
+        isapprox(node1.distances, node2.distances ; kwargs...) &&
+        isapprox(node1.dihedrals, node2.dihedrals ; kwargs...)
+    )
+end
+
 function Base.show(io::IO, node::AtomNode)
     A = node.atom
     if isempty(node.children)
@@ -37,6 +61,10 @@ function Base.show(io::IO, node::AtomNode)
             " dihedrals = $(round.(rad2deg.(node.dihedrals), digits = 2)))"
         )
     end
+end
+
+function n_coordinates(node::AtomNode)
+    return count(!isnan, node.distances) + count(!isnan, node.angles) + count(!isnan, node.dihedrals)
 end
 
 """
@@ -88,6 +116,18 @@ function CartesianMolecule(system::AtomicSystem, positions::AbstractMatrix{<:Qua
     end
 
     return CartesianMolecule(system, topology, positions)
+end
+
+function topologically_equal(mol1::CartesianMolecule, mol2::CartesianMolecule)
+    return mol1.system == mol2.system && mol1.topology == mol2.topology
+end
+
+function Base.:(==)(mol1::CartesianMolecule, mol2::CartesianMolecule)
+    return topologically_equal(mol1, mol2) && mol1.positions == mol2.positions
+end
+
+function Base.isapprox(mol1::CartesianMolecule, mol2::CartesianMolecule ; kwargs...)
+    return topologically_equal(mol1, mol2) && isapprox(mol1.positions, mol2.positions ; kwargs...)
 end
 
 function Base.show(io::IO, molecule::CartesianMolecule)
@@ -146,12 +186,30 @@ struct InternalCoordinateMolecule <: AbstractMolecule
     nodes::Vector{AtomNode}
 end
 
+function topologically_equal(mol1::InternalCoordinateMolecule, mol2::InternalCoordinateMolecule)
+    return (
+        mol1.system == mol2.system &&
+        mol1.topology == mol2.topology &&
+        mol1.root == mol2.root
+    )
+end
+
+function Base.:(==)(mol1::InternalCoordinateMolecule, mol2::InternalCoordinateMolecule)
+    return topologically_equal(mol1, mol2) && all(mol1.nodes .== mol2.nodes)
+end
+
+function Base.isapprox(mol1::InternalCoordinateMolecule, mol2::InternalCoordinateMolecule ; kwargs...)
+    return topologically_equal(mol1, mol2) && all(isapprox.(mol1.nodes, mol2.nodes ; kwargs...))
+end
+
 function Base.show(io::IO, molecule::InternalCoordinateMolecule)
-    print(io, "Simple molecule (internal coordinates) with $(length(molecule)) atoms and $(nbonds(molecule)) bonds.\n")
+    print(io, "Simple molecule (internal coordinates) with $(length(molecule)) atoms and $(nbonds(molecule)) bonds ($(n_coordinates(molecule)) internal coordinates)\n")
 
     print_tree(io, molecule.nodes[molecule.root])
 end
- 1
+
+n_coordinates(molecule::InternalCoordinateMolecule) = sum(n_coordinates, molecule.nodes)
+
 Graphs.add_edge!(g::SimpleGraph, A::Atom, B::Atom) = add_edge!(g, A.index, B.index)
 
 function get_parent(tree, node)
@@ -170,6 +228,7 @@ get_parent(molecule::InternalCoordinateMolecule, node::Int) = get_parent(molecul
 get_parent(::InternalCoordinateMolecule, ::Nothing) = nothing
 get_parent(::Nothing) = nothing
 
+# Conversion between molecule representations
 function build_node!(nodes, molecule::CartesianMolecule, tree::AbstractGraph, current::Int ; verbose = false)
     positions = molecule.positions
     system = molecule.system
@@ -276,8 +335,6 @@ function build_node!(nodes, molecule::CartesianMolecule, tree::AbstractGraph, cu
     nodes[current] = node
     return node
 end
-
-# Conversion between molecule representations
 
 function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index = 1 ; verbose = false)
     topology = molecule.topology

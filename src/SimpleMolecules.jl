@@ -19,7 +19,7 @@ export distance, angle, dihedral
 
 include("molecule.jl")
 export AbstractMolecule, CartesianMolecule, InternalCoordinateMolecule, AtomNode
-export nbonds, get_bonds
+export nbonds, get_bonds, topologically_equal
 
 include("loading.jl")
 
