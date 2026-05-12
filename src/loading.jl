@@ -8,7 +8,7 @@ If `center` is true, the geometry is shifted so that its center of mass is at (0
 `bond_tolerance` control what tolerance to use to automatically determine when a bond is present.
 """
 function Base.read(filename::AbstractString, ::Type{CartesianMolecule} ;
-        units = u"Å", center = true, bond_tolerance = 0.1)
+        units = u"Å", center = true, bond_tolerance = :auto)
     lines = readlines(filename)[3:end]
     filter!(!isempty, lines)
     natoms = length(lines)

@@ -91,27 +91,40 @@ struct CartesianMolecule <: AbstractMolecule
     positions::Matrix{Float64}
 end
 
-function CartesianMolecule(system::AtomicSystem, positions::AbstractMatrix{<:Quantity} ; bond_tolerance = 0.0)
+function CartesianMolecule(system::AtomicSystem, positions::AbstractMatrix{<:Quantity} ; bond_tolerance = :auto, maximum_tolerance = 10.0)
     @assert size(positions, 1) == 3
     @assert size(positions, 2) == length(system)
 
     positions = austrip.(positions)
 
+    tolerance = (bond_tolerance == :auto) ? 0.0 : bond_tolerance
+
     topology = SimpleGraph()
-    add_vertices!(topology, length(system))
 
-    for A in system
-        radius_A = austrip(Mendeleev.elements[A.element.number].covalent_radius_pyykko)
-        rA = positions[:, A]
-        for B in system[(A.index + 1):end]
-            radius_B = austrip(Mendeleev.elements[A.element.number].covalent_radius_pyykko)
-            rB = positions[:, B]
+    while tolerance < maximum_tolerance
+        topology = SimpleGraph()
+        add_vertices!(topology, length(system))
 
-            threshold = (1 + bond_tolerance) * (radius_A + radius_B)
+        for A in system
+            radius_A = austrip(Mendeleev.elements[A.element.number].covalent_radius_pyykko)
+            rA = positions[:, A]
+            for B in system[(A.index + 1):end]
+                radius_B = austrip(Mendeleev.elements[A.element.number].covalent_radius_pyykko)
+                rB = positions[:, B]
 
-            if norm(rB - rA) <= threshold
-                add_edge!(topology, A, B)
+                threshold = (1 + tolerance) * (radius_A + radius_B)
+
+                if norm(rB - rA) <= threshold
+                    add_edge!(topology, A, B)
+                end
             end
+        end
+
+        # We stop once the topology has a single connected component i.e. the topology is connected
+        if bond_tolerance != :auto || length(connected_components(topology)) == 1
+            return CartesianMolecule(system, topology, positions)
+        else
+            tolerance += 0.1
         end
     end
 
