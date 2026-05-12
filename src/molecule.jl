@@ -349,7 +349,11 @@ function build_node!(nodes, molecule::CartesianMolecule, tree::AbstractGraph, cu
     return node
 end
 
-function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index = 1 ; verbose = false)
+function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index ; kwargs...)
+    InternalCoordinateMolecule(molecule, molecule.system[root_index].index ; kwargs...)
+end
+
+function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index::Int = 1 ; verbose = false)
     topology = molecule.topology
     tree = bfs_tree(topology, root_index)
     nodes = Vector{AtomNode}(undef, length(molecule))
@@ -358,20 +362,28 @@ function InternalCoordinateMolecule(molecule::CartesianMolecule, root_index = 1 
     return InternalCoordinateMolecule(molecule.system, topology, root_index, nodes)
 end
 
-function CartesianMolecule(molecule::InternalCoordinateMolecule)
+function CartesianMolecule(molecule::InternalCoordinateMolecule ; verbose = false)
     positions = zeros(3, length(molecule.system))
 
     to_process = [molecule.nodes[molecule.root]]
 
     while !isempty(to_process)
-        node = popfirst!(to_process)
-        children = node.children
-        parent = get_parent(molecule, node)
+        current = popfirst!(to_process)
+        children = current.children
+        parent = get_parent(molecule, current)
         grandparent = get_parent(molecule, parent)
+        
+        if verbose
+            println("Current:  $(current)")
+        end
 
         append!(to_process, children)
 
-        for (k, (child, d, α, φ)) in enumerate(zip(children, node.distances, node.angles, node.dihedrals))
+        for (k, (child, d, α, φ)) in enumerate(zip(children, current.distances, current.angles, current.dihedrals))
+            if verbose
+                println("  Child:  $child")
+            end
+
             use_sibling_as_parent = false
 
             if !isnothing(parent)
@@ -400,28 +412,56 @@ function CartesianMolecule(molecule::InternalCoordinateMolecule)
             end
 
             if isnothing(angle_reference)
+                if verbose
+                    println("    no angle reference")
+                end
+
                 positions[:, index(child)] = [d, 0, 0]
+
+                if verbose
+                    println("    position:  $(positions[:, index(child)])")
+                end
                 continue
             end
 
-            rel_angle = positions[:, index(angle_reference)] - positions[:, index(node)]
+            rel_angle = positions[:, index(angle_reference)] - positions[:, index(current)]
             rel = d * normalize(rel_angle)
 
             if isnothing(dihedral_reference)
-                if iszero(norm(positions[:, index(angle_reference)]))
-                    axis = normalize(rel × [0, -1, 0])
-                else
-                    axis = normalize(positions[:, index(angle_reference)] × positions[:, index(node)])
+                if verbose
+                    println("    no dihedral reference")
+                    println("    angle reference:  $angle_reference")
+                    println("      at $(positions[:, index(angle_reference)])")
+                    println("    relative position of the angle reference to current $rel_angle")
                 end
 
-                positions[:, index(child)] = positions[:, index(node)] + RotationVec((α * axis)...) * rel
+                if iszero(norm(positions[:, index(angle_reference)])) || iszero(norm(positions[:, index(current)]))
+                    axis = normalize(rel × [0, -1, 0])
+                else
+                    axis = normalize(positions[:, index(angle_reference)] × positions[:, index(current)])
+                end
+
+                positions[:, index(child)] = positions[:, index(current)] + RotationVec((α * axis)...) * rel
+
+                if verbose
+                    println("    axis $axis")
+                    println("    position:  $(positions[:, index(child)])")
+                end
                 continue
+            end
+            if verbose
+                println("    dihedral reference:  $dihedral_reference")
+                println("    angle reference:  $angle_reference")
             end
 
             rel_dihedral = positions[:, index(dihedral_reference)] - positions[:, index(angle_reference)]
             axis = normalize(rel_angle × rel_dihedral)
 
-            positions[:, index(child)] = positions[:, index(node)] + RotationVec((φ * normalize(rel_angle))...) * RotationVec((α * axis)...) * rel
+            positions[:, index(child)] = positions[:, index(current)] + RotationVec((φ * normalize(rel_angle))...) * RotationVec((α * axis)...) * rel
+
+            if verbose
+                println("    position:  $(positions[:, index(child)])")
+            end
         end
     end
 
