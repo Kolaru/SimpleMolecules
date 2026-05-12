@@ -1,3 +1,7 @@
+function distance(r1, r2)
+    return norm(r1 - r2)
+end
+
 function AngleBetweenVectors.angle(r1, r2, r3)
     r1 = convert.(Float64, r1)
     r2 = convert.(Float64, r2)

@@ -90,7 +90,6 @@ function CartesianMolecule(system::AtomicSystem, positions::AbstractMatrix{<:Qua
     return CartesianMolecule(system, topology, positions)
 end
 
-
 function Base.show(io::IO, molecule::CartesianMolecule)
     print(io, "Simple molecule (cartesian coordinates) with $(length(molecule)) atoms and $(nbonds(molecule)) bonds.\n")
 
@@ -99,32 +98,45 @@ function Base.show(io::IO, molecule::CartesianMolecule)
         println("  $(A.index). $(A.name)  ($(A.element.name))  [$x, $y, $z]")
     end
 
-    xx = molecule.positions[1, :]
-    yy = molecule.positions[2, :]
+    data = Dict(
+        :x => molecule.positions[1, :],
+        :y => molecule.positions[2, :],
+        :z => molecule.positions[3, :]
+    )
 
     colors = map(molecule.system) do A
         c = parse(Colorant, A.element.cpk_hex)
         return (Int(red(c) * 255), Int(green(c) * 255), Int(blue(c) * 255))
     end
 
-    plt = scatterplot(xx, yy ;
-        marker = [first(string(A.element.symbol)) for A in molecule.system],
-        compact = true,
-        grid = false,
-        color = colors
-    )
-    for (A, B) in get_bonds(molecule)
-        midx = 0.5 * (xx[A] + xx[B])
-        midy = 0.5 * (yy[A] + yy[B])
-        lineplot!(plt, [xx[A], midx], [yy[A], midy] ;
-            color = colors[A]
+    for (u, v) in [(:x, :y), (:y, :z), (:x, :z)]
+        plt = scatterplot(data[u], data[v] ;
+            marker = [first(string(A.element.symbol)) for A in molecule.system],
+            compact = true,
+            grid = false,
+            color = colors,
+            xlabel = string(u),
+            ylabel = string(v)
         )
 
-        lineplot!(plt, [midx, xx[B]], [midy, yy[B]] ;
-            color = colors[B]
-        )
+        for (A, B) in get_bonds(molecule)
+            midx = 0.5 * (data[u][A] + data[u][B])
+            midy = 0.5 * (data[v][A] + data[v][B])
+            lineplot!(plt, [data[u][A], midx], [data[v][A], midy] ;
+                color = colors[A]
+            )
+
+            lineplot!(plt, [midx, data[u][B]], [midy, data[v][B]] ;
+                color = colors[B]
+            )
+        end
+        display(plt)
     end
-    display(plt)
+end
+
+function Base.getindex(molecule::CartesianMolecule, idx)
+    A = molecule.system[idx]
+    return (; atom = A, position = molecule.positions[:, A])
 end
 
 struct InternalCoordinateMolecule <: AbstractMolecule
@@ -139,7 +151,7 @@ function Base.show(io::IO, molecule::InternalCoordinateMolecule)
 
     print_tree(io, molecule.nodes[molecule.root])
 end
-
+ 1
 Graphs.add_edge!(g::SimpleGraph, A::Atom, B::Atom) = add_edge!(g, A.index, B.index)
 
 function get_parent(tree, node)
@@ -344,4 +356,31 @@ function CartesianMolecule(molecule::InternalCoordinateMolecule)
     end
 
     return CartesianMolecule(molecule.system, molecule.topology, positions)
+end
+
+# Utilities
+function distance(molecule::CartesianMolecule, A, B)
+    return distance(
+        molecule[A].position,
+        molecule[B].position
+    ) * u"bohr"
+end
+
+function AngleBetweenVectors.angle(molecule::CartesianMolecule, A, B, C)
+    A = molecule.system[A]
+    B = molecule.system[B]
+    return angle(
+        molecule[A].position,
+        molecule[B].position,
+        molecule[C].position
+    )
+end
+
+function dihedral(molecule::CartesianMolecule, A, B, C, D)
+    return dihedral(
+        molecule[A].position,
+        molecule[B].position,
+        molecule[C].position,
+        molecule[D].position
+    )
 end
