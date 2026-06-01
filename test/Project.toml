@@ -1,7 +1,0 @@
-[deps]
-AtomicSystems = "56d0e77e-dbc1-4298-ac1b-edea21caa27a"
-Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
-SimpleMolecules = "7d943647-7f8d-435c-a8e5-bbcd0ae30d06"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
-UnitfulAtomic = "a7773ee8-282e-5fa2-be4e-bd808c38a91a"

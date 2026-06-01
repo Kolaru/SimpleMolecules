@@ -49,7 +49,7 @@ version = "0.1.11"
 
 [[deps.AtomicSystems]]
 deps = ["AtomicLevels", "PeriodicTable", "Printf", "Statistics", "Unitful", "UnitfulAtomic"]
-path = "/home/brichard/.julia/dev/AtomicSystems"
+path = "/home/brichard/julia/dev/AtomicSystems"
 uuid = "56d0e77e-dbc1-4298-ac1b-edea21caa27a"
 version = "0.1.0"
 
