@@ -15,7 +15,7 @@ function dihedral(r1, r2, r3, r4)
     u3 = r4 - r3
 
     return atan(
-        u2 ⋅ ((u1 × u2) × (u2 × u3)),
-        norm(u2) * ((u1 × u2) ⋅ (u2 × u3))
+        norm(u2) * (u1 ⋅ (u2 × u3)),
+        (u1 × u2) ⋅ (u2 × u3)
     )
 end

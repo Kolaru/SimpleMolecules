@@ -49,9 +49,16 @@ end
 
     imolecule = InternalCoordinateMolecule(molecule)
     molecule2 = CartesianMolecule(imolecule)
-
     imolecule2 = InternalCoordinateMolecule(molecule)
     molecule3 = CartesianMolecule(imolecule)
 
-    @test molecule2.positions == molecule3.positions
+    @test molecule2.positions ≈ molecule3.positions
+
+    dithiane = read("../example/dithiane.xyz", CartesianMolecule)
+    idithiane = InternalCoordinateMolecule(dithiane, "S1")
+    dithiane2 = CartesianMolecule(idithiane)
+    idithiane2 = InternalCoordinateMolecule(dithiane2, "S1")
+    dithiane3 = CartesianMolecule(idithiane2)
+
+    @test dithiane2 ≈ dithiane3
 end

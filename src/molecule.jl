@@ -457,7 +457,7 @@ function CartesianMolecule(molecule::InternalCoordinateMolecule ; verbose = fals
             rel_dihedral = positions[:, index(dihedral_reference)] - positions[:, index(angle_reference)]
             axis = normalize(rel_angle × rel_dihedral)
 
-            positions[:, index(child)] = positions[:, index(current)] + RotationVec((φ * normalize(rel_angle))...) * RotationVec((α * axis)...) * rel
+            positions[:, index(child)] = positions[:, index(current)] + RotationVec((-φ * normalize(rel_angle))...) * RotationVec((α * axis)...) * rel
 
             if verbose
                 println("    position:  $(positions[:, index(child)])")
